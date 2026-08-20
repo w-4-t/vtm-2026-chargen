@@ -1,0 +1,94 @@
+(function(){
+const D=window.VTM_DATA,M=window.VTM_MODEL;
+const steps=[['identity','Основа'],['lifepaths','Lifepaths'],['skills','Skills'],['focuses','Focuses'],['resources','Resources'],['traits','Merits / Flaws'],['review','Review']];
+let current=0;
+let state=loadLocal()||M.newState();
+let lastLogCount=state.changeLog.length;
+const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const skill=id=>D.skills.find(s=>s.id===id);
+const rtype=id=>D.resourceTypes.find(r=>r.id===id);
+const sum=o=>Object.values(o||{}).reduce((a,b)=>a+(Number(b)||0),0);
+
+function loadLocal(){try{const x=localStorage.getItem('vtm_v5v6_chargen');return x?M.importState(x):null}catch(e){return null}}
+function saveLocal(){localStorage.setItem('vtm_v5v6_chargen',M.exportState(state));flash('Character state saved locally on this device.');}
+function flash(msg,kind='info'){const f=$('#flash');f.className=`notice ${kind} flash show`;f.textContent=msg;clearTimeout(f._t);f._t=setTimeout(()=>f.classList.remove('show'),5000)}
+function render(){
+  renderProgress(); renderIdentity(); renderLifepaths(); renderSkills(); renderFocuses(); renderResources(); renderTraits(); renderReview();
+  document.querySelectorAll('.section').forEach((el,i)=>el.classList.toggle('active',i===current));
+  $('#backBtn').disabled=current===0; $('#nextBtn').textContent=current===steps.length-1?'Review':'Далі →';
+  if(state.changeLog.length>lastLogCount){flash(state.changeLog[0].msg,'warn');lastLogCount=state.changeLog.length}
+}
+function renderProgress(){
+  $('#progress').innerHTML=steps.map((s,i)=>`<button class="stepbtn ${i===current?'active':''}" data-goto="${i}">${i+1}. ${s[1]}</button>`).join('');
+  document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>{current=Number(b.dataset.goto);render()});
+}
+function renderIdentity(){
+  const a=state.attributes;
+  const attrGroups=[['Physical',[['strength','Strength'],['dexterity','Dexterity'],['stamina','Stamina']]],['Social',[['charisma','Charisma'],['manipulation','Manipulation'],['composure','Composure']]],['Mental',[['intelligence','Intelligence'],['wits','Wits'],['resolve','Resolve']]]];
+  $('#identityUI').innerHTML=`
+  <div class="card"><h2>Character</h2><div class="grid2"><div class="field"><label>Name</label><input id="charName" value="${esc(state.identity.name)}"></div><div class="field"><label>Clan</label><input id="charClan" value="${esc(state.identity.clan)}"></div></div><div class="grid2"><div class="field"><label>Concept</label><input id="charConcept" value="${esc(state.identity.concept)}"></div><div class="field"><label>Generation</label><input id="charGen" type="number" min="4" max="16" value="${state.identity.generation}"></div></div><div class="switchrow"><input id="youngToggle" type="checkbox" ${state.identity.young?'checked':''}><div><strong>Young / inexperienced character</strong><div class="small">Uses one Lifepath and starts weaker. Catch-up XP is ×2 of the actual rate chosen by the ST.</div></div></div></div>
+  <div class="card"><h2>V5 Attributes</h2><div class="notice info">Current generator validates the standard V5 distribution: one 4, three 3s, four 2s, one 1.</div>${attrGroups.map(g=>`<h3>${g[0]}</h3><div class="grid3">${g[1].map(([id,n])=>`<div class="attr"><label>${n}</label><select data-attr="${id}">${[1,2,3,4].map(v=>`<option ${a[id]===v?'selected':''}>${v}</option>`).join('')}</select></div>`).join('')}</div>`).join('')}</div>`;
+  $('#charName').oninput=e=>state.identity.name=e.target.value; $('#charClan').oninput=e=>state.identity.clan=e.target.value; $('#charConcept').oninput=e=>state.identity.concept=e.target.value; $('#charGen').oninput=e=>state.identity.generation=Number(e.target.value)||13;
+  $('#youngToggle').onchange=e=>{M.setYoung(state,e.target.checked);render()}; document.querySelectorAll('[data-attr]').forEach(x=>x.onchange=e=>{state.attributes[e.target.dataset.attr]=Number(e.target.value);renderReview()});
+}
+function lpOptions(selected){return `<option value="">— choose —</option>${D.lifepaths.map(lp=>`<option value="${lp.id}" ${lp.id===selected?'selected':''}>${lp.type==='vampire'?'[Vampire] ':'[Mortal] '}${lp.name}</option>`).join('')}`}
+function renderLifepaths(){
+ const n=M.activeLpCount(state); let html=`<div class="card"><h2>Lifepaths</h2><div class="notice info">Each Lifepath provides 5 Skill dots, 2 Focuses, and 3 Resource dots in its own lists. Changing a Lifepath clears its dependent choices immediately.</div></div>`;
+ for(let i=0;i<n;i++){
+   const slot=state.lifepaths[i],lp=M.getLp(slot.id),spent=sum(slot.skillDots),rspent=sum(slot.resourceDots);
+   html+=`<div class="card"><div class="lphead"><div><h2>Lifepath ${i+1}${lp?`: ${esc(lp.name)}`:''}</h2>${lp?`<div class="lpmeta">${esc(lp.description)}</div>`:''}</div><div class="field" style="min-width:220px;margin:0"><label>Template</label><select data-lp-select="${i}">${lpOptions(slot.id)}</select></div></div>`;
+   if(lp){html+=`<div class="budget"><span class="pill ${spent===5?'good':'warn'}">Skill dots ${spent}/5</span><span class="pill ${slot.focuses.length===2?'good':'warn'}">Focuses ${slot.focuses.length}/2</span><span class="pill ${rspent===3?'good':'warn'}">Resources ${rspent}/3</span></div><h3>Skill dots</h3>${lp.skills.map(sid=>skillDotRow(i,sid,slot.skillDots[sid]||0,true)).join('')}<h3>Focus hints from V6 template</h3><div class="small">${lp.focusHints.length?lp.focusHints.map(f=>`${esc(skill(f.skill).name)}: ${esc(f.name)}`).join(' · '):'No preset focus hints.'}</div><h3>Resource dots</h3>${lp.resources.map(r=>resourceDotRow(i,r,slot.resourceDots[r.key]||0)).join('')}`}
+   html+='</div>';
+ }
+ $('#lifepathsUI').innerHTML=html;
+ document.querySelectorAll('[data-lp-select]').forEach(x=>x.onchange=e=>{M.setLifepath(state,Number(e.target.dataset.lpSelect),e.target.value);render()}); bindSteppers();
+}
+function skillDotRow(lpIndex,sid,value,isLp){const total=M.totalSkill(state,sid);return `<div class="row"><div><div class="rowname">${esc(skill(sid).name)}</div><div class="rowmeta">Total rating now: ${total} / cap ${D.rules.standard.skillCap}</div></div>${stepperHtml(isLp?'lpSkill':'freeSkill',value,`${lpIndex}:${sid}`)}</div>`}
+function stepperHtml(kind,value,key){return `<div class="stepper"><button data-step-kind="${kind}" data-key="${key}" data-delta="-1">−</button><div class="n">${value}</div><button data-step-kind="${kind}" data-key="${key}" data-delta="1">+</button></div>`}
+function resourceDotRow(i,r,v){const rt=rtype(r.type);return `<div class="row"><div><div class="rowname">${esc(rt?rt.name:r.type)}${r.label?`: ${esc(r.label)}`:''}</div><div class="rowmeta">${esc(rt?rt.category:'Resource')}</div></div>${stepperHtml('lpResource',v,`${i}:${r.key}`)}</div>`}
+function bindSteppers(){document.querySelectorAll('[data-step-kind]').forEach(b=>b.onclick=()=>{const d=Number(b.dataset.delta),kind=b.dataset.stepKind,key=b.dataset.key;let ok=true;if(kind==='lpSkill'){const [i,s]=key.split(':');const old=state.lifepaths[Number(i)].skillDots[s]||0;ok=M.setLpSkillDot(state,Number(i),s,old+d)}else if(kind==='freeSkill'){const s=key;ok=M.setFreeSkillDot(state,s,(state.freeSkills[s]||0)+d)}else if(kind==='lpResource'){const [i,k]=key.split(':');ok=M.setLpResourceDot(state,Number(i),k,(state.lifepaths[Number(i)].resourceDots[k]||0)+d)}if(!ok)flash('That change would violate the current chargen budget or Skill cap.','danger');render()})}
+function renderSkills(){
+ const freeSpent=sum(state.freeSkills); const totals=M.totalSkills(state);
+ $('#skillsUI').innerHTML=`<div class="card"><h2>Free Skills</h2><div class="budget"><span class="pill ${freeSpent===8?'good':'warn'}">Free dots ${freeSpent}/8</span><span class="pill">Chargen cap 3</span></div><div class="notice info">Lifepath dots and free dots stack, but the final Skill rating cannot exceed 3.</div>${D.skills.map(s=>`<div class="row"><div><div class="rowname">${s.name} <span class="small">— total ${totals[s.id]}</span></div><div class="rowmeta">${esc(s.description)}</div></div>${stepperHtml('freeSkill',state.freeSkills[s.id]||0,s.id)}</div>`).join('')}</div>`; bindSteppers();
+}
+function focusInput(scope,index,allowedSkills){return `<div class="focusbox"><div class="field"><label>Skill</label><select data-focus-skill="${scope}" data-index="${index}">${allowedSkills.filter(s=>M.totalSkill(state,s)>=1).map(s=>`<option value="${s}">${esc(skill(s).name)}</option>`).join('')}</select></div><div class="field"><label>Focus (+${D.rules.standard.focusBonus} dice)</label><input data-focus-name="${scope}" data-index="${index}" list="focusSuggestions" placeholder="Choose RAW suggestion or type custom"></div><button class="btn" data-add-focus="${scope}" data-index="${index}">Add</button></div>`}
+function focusTags(arr,scope,index){return arr.map((f,fi)=>`<div class="tag"><div><strong>${esc(skill(f.skill).name)}</strong>: ${esc(f.name)} <span class="small">(+${D.rules.standard.focusBonus})</span></div><button class="x" data-remove-focus="${scope}" data-index="${index}" data-fi="${fi}">×</button></div>`).join('')}
+function renderFocuses(){
+ const n=M.activeLpCount(state); let html=`<div class="card"><h2>Focuses</h2><div class="notice info">Focuses are detached from Skill rating thresholds. Standard neonate: 2 per Lifepath + 2 free. A Focus requires Skill 1+ and the chargen maximum is 2 Focuses on one Skill. Current Focuses are V6 suggestions; manual entries are allowed.</div></div>`;
+ for(let i=0;i<n;i++){const slot=state.lifepaths[i],lp=M.getLp(slot.id);if(!lp)continue;html+=`<div class="card"><h2>${esc(lp.name)} Focuses</h2><div class="budget"><span class="pill ${slot.focuses.length===2?'good':'warn'}">${slot.focuses.length}/2</span></div>${focusTags(slot.focuses,'lp',i)}${slot.focuses.length<2?focusInput('lp',i,lp.skills):''}</div>`}
+ html+=`<div class="card"><h2>Free Focuses</h2><div class="budget"><span class="pill ${state.freeFocuses.length===2?'good':'warn'}">${state.freeFocuses.length}/2</span></div>${focusTags(state.freeFocuses,'free',0)}${state.freeFocuses.length<2?focusInput('free',0,D.skills.map(s=>s.id)):''}</div>`;
+ $('#focusesUI').innerHTML=html; bindFocusInputs();
+}
+function bindFocusInputs(){
+ document.querySelectorAll('[data-focus-skill]').forEach(sel=>{const update=()=>{const sid=sel.value;const dl=$('#focusSuggestions');dl.innerHTML=(skill(sid)?.focuses||[]).map(x=>`<option value="${esc(x)}"></option>`).join('')};sel.onchange=update;update()});
+ document.querySelectorAll('[data-add-focus]').forEach(b=>b.onclick=()=>{const scope=b.dataset.addFocus,idx=Number(b.dataset.index);const sel=document.querySelector(`[data-focus-skill="${scope}"][data-index="${idx}"]`),inp=document.querySelector(`[data-focus-name="${scope}"][data-index="${idx}"]`);const ok=scope==='free'?M.addFreeFocus(state,sel.value,inp.value):M.addLpFocus(state,idx,sel.value,inp.value);if(!ok)flash('Focus was not added: check Skill 1+, duplicate Focus, budget, and the 2-Focuses-per-Skill cap.','danger');render()});
+ document.querySelectorAll('[data-remove-focus]').forEach(b=>b.onclick=()=>{M.removeFocus(state,b.dataset.removeFocus,Number(b.dataset.index),Number(b.dataset.fi));render()});
+}
+function renderResources(){
+ const n=M.activeLpCount(state); let html=`<div class="card"><h2>Resources</h2><div class="notice info">This screen implements chargen allocation only. Runtime Resource tests, spending, depletion, and recovery are deliberately deferred.</div></div>`;
+ for(let i=0;i<n;i++){const slot=state.lifepaths[i],lp=M.getLp(slot.id);if(!lp)continue;const spent=sum(slot.resourceDots);html+=`<div class="card"><h2>${esc(lp.name)} Resources</h2><div class="budget"><span class="pill ${spent===3?'good':'warn'}">${spent}/3 dots</span></div>${lp.resources.map(r=>resourceDotRow(i,r,slot.resourceDots[r.key]||0)).join('')}</div>`}
+ const fr=state.freeResources.reduce((n,r)=>n+r.dots,0);
+ html+=`<div class="card"><h2>Free Resources</h2><div class="budget"><span class="pill ${fr===3?'good':'warn'}">${fr}/3 dots</span></div>${state.freeResources.map((r,i)=>`<div class="tag"><div><strong>${esc(rtype(r.type)?.name||r.type)}</strong>${r.label?`: ${esc(r.label)}`:''} — ${r.dots} dot${r.dots===1?'':'s'}</div><button class="x" data-del-free-res="${i}">×</button></div>`).join('')}<div class="resadd"><div class="field"><label>Type</label><select id="freeResType">${D.resourceTypes.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select></div><div class="field"><label>Label / specialization</label><input id="freeResLabel" placeholder="e.g. Armory, Dresden Court"></div><div class="field"><label>Dots</label><select id="freeResDots"><option>1</option><option>2</option><option>3</option></select></div><button class="btn wide" id="addFreeRes">Add</button></div></div>`;
+ $('#resourcesUI').innerHTML=html;bindSteppers(); $('#addFreeRes').onclick=()=>{if(!M.addFreeResource(state,$('#freeResType').value,$('#freeResLabel').value,$('#freeResDots').value))flash('Free Resource budget exceeded.','danger');render()};document.querySelectorAll('[data-del-free-res]').forEach(b=>b.onclick=()=>{state.freeResources.splice(Number(b.dataset.delFreeRes),1);render()});
+}
+function renderTraits(){
+ $('#traitsUI').innerHTML=`<div class="card"><h2>Starting Merit</h2><div class="notice warn">The Merit list is intentionally provisional. Conflicting V6 Merits are removed; V5 Merits may later be adapted one by one.</div><div class="field"><label>Merit</label><select id="meritSel"><option value="">— none / defer —</option>${D.merits.map(m=>`<option value="${m.id}" ${state.merit===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>${state.merit?`<div class="small">${esc(D.merits.find(m=>m.id===state.merit)?.description||'')}</div>`:''}</div>
+ <div class="card"><h2>Flaws</h2><div class="small">No point compensation. Flaws are ST-facing hooks used when relevant to the fiction.</div>${state.flaws.map((f,i)=>`<div class="tag"><div><strong>${esc(f.name)}</strong>${f.description?`<div class="small">${esc(f.description)}</div>`:''}</div><button class="x" data-del-flaw="${i}">×</button></div>`).join('')}<div class="grid2"><div class="field"><label>Name</label><input id="flawName"></div><div class="field"><label>Description</label><input id="flawDesc"></div></div><button class="btn" id="addFlaw">Add Flaw</button></div>
+ <div class="card"><h2>Feeding</h2><div class="notice info">Predator Type is not required. Describe the character’s usual feeding practice; any stable mechanical advantage or restriction is agreed with the ST separately.</div><div class="field"><label>Feeding pattern</label><textarea id="feedingText">${esc(state.feedingPattern)}</textarea></div><div class="field"><label>Notes</label><textarea id="notesText">${esc(state.notes)}</textarea></div></div>`;
+ $('#meritSel').onchange=e=>{state.merit=e.target.value;renderTraits()};$('#addFlaw').onclick=()=>{const n=$('#flawName').value.trim();if(n){state.flaws.push({name:n,description:$('#flawDesc').value.trim()});render()}};document.querySelectorAll('[data-del-flaw]').forEach(b=>b.onclick=()=>{state.flaws.splice(Number(b.dataset.delFlaw),1);render()});$('#feedingText').oninput=e=>state.feedingPattern=e.target.value;$('#notesText').oninput=e=>state.notes=e.target.value;
+}
+function renderReview(){
+ const v=M.validation(state),tot=M.totalSkills(state),focuses=M.allFocuses(state),res=M.resourceSummary(state),n=M.activeLpCount(state);
+ $('#reviewUI').innerHTML=`<div class="card"><h2>Validation</h2>${v.ok?'<div class="notice good">All hard chargen constraints currently pass.</div>':'<div class="notice danger">Character is not rules-valid yet.</div>'}${v.issues.map(x=>`<div class="issue" style="color:var(--danger)">• ${esc(x)}</div>`).join('')}${v.warnings.map(x=>`<div class="issue" style="color:var(--warn)">• ${esc(x)}</div>`).join('')}</div>
+ <div class="reviewgrid"><div class="card"><h2>Identity</h2><div class="kv"><strong>${esc(state.identity.name||'Unnamed')}</strong></div><div class="kv">${esc(state.identity.clan)} · Gen ${state.identity.generation}</div><div class="kv">${esc(state.identity.concept||'No concept')}</div><div class="kv">${state.identity.young?'Young character · 1 Lifepath · ×2 catch-up XP':'Standard neonate · 2 Lifepaths'}</div></div><div class="card"><h2>Lifepaths</h2>${state.lifepaths.slice(0,n).map((x,i)=>`<div class="kv">${i+1}. ${esc(M.getLp(x.id)?.name||'—')}</div>`).join('')}</div></div>
+ <div class="card"><h2>Skills</h2>${D.skills.filter(s=>tot[s.id]>0).map(s=>`<div class="kv"><strong>${s.name} ${tot[s.id]}</strong>${focuses.filter(f=>f.skill===s.id).length?` <span class="small">(${focuses.filter(f=>f.skill===s.id).map(f=>esc(f.name)+' +2').join(', ')})</span>`:''}</div>`).join('')||'<div class="small">No Skills yet.</div>'}</div>
+ <div class="reviewgrid"><div class="card"><h2>Resources</h2>${res.map(r=>`<div class="kv"><strong>${esc(rtype(r.type)?.name||r.type)}${r.label?`: ${esc(r.label)}`:''} ${r.dots}</strong><div class="small">${esc(r.source)}</div></div>`).join('')||'<div class="small">No Resources yet.</div>'}</div><div class="card"><h2>Traits</h2><div class="kv">Merit: ${esc(D.merits.find(m=>m.id===state.merit)?.name||'—')}</div><div class="kv">Flaws: ${state.flaws.length?state.flaws.map(f=>esc(f.name)).join(', '):'—'}</div><div class="kv"><span class="small">Feeding:</span><br>${esc(state.feedingPattern||'—')}</div></div></div>
+ <div class="card"><h2>Data</h2><div class="grid2"><button class="btn" id="exportBtn">Export JSON</button><button class="btn" id="importBtn">Import JSON</button></div><h3>Recent dependency changes</h3>${state.changeLog.length?state.changeLog.slice(0,6).map(x=>`<div class="issue">${esc(x.msg)}</div>`).join(''):'<div class="small">No reconciliations yet.</div>'}</div>`;
+ const ex=$('#exportBtn');if(ex)ex.onclick=downloadJSON;const im=$('#importBtn');if(im)im.onclick=()=>$('#importFile').click();
+}
+function downloadJSON(){const blob=new Blob([M.exportState(state)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(state.identity.name.trim().replace(/[^a-z0-9_-]+/gi,'_')||'vtm_character')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+$('#importFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{state=M.importState(rd.result);flash('Character imported and reconciled against current data.','good');render()}catch(err){flash('Invalid character JSON.','danger')}};rd.readAsText(f);e.target.value=''};
+$('#backBtn').onclick=()=>{if(current>0){current--;render()}};$('#nextBtn').onclick=()=>{if(current<steps.length-1){current++;render()}else renderReview()};$('#saveBtn').onclick=saveLocal;
+window.addEventListener('beforeunload',()=>{try{localStorage.setItem('vtm_v5v6_chargen',M.exportState(state))}catch(e){}});
+render();
+})();
