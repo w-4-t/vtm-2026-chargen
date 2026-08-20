@@ -1,6 +1,6 @@
 window.VTM_DATA = window.VTM_DATA || {};
 window.VTM_DATA.rules = {
-  version: "0.1.0",
+  version: "0.2.0",
   tier: "neonate",
   standard: {
     lifepaths: 2,
