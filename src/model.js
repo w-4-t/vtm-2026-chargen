@@ -7,8 +7,8 @@
 
   function newState(){
     return {
-      schemaVersion:1,
-      identity:{name:"",concept:"",clan:"Brujah",generation:13,young:false},
+      schemaVersion:2,
+      identity:{name:"",concept:"",clan:"",generation:13,young:false},
       attributes:defaultAttrs(),
       lifepaths:[makeLpSlot(),makeLpSlot()],
       freeSkills:blankDots(),
@@ -23,6 +23,7 @@
   }
   function makeLpSlot(){ return {id:"",skillDots:blankDots(),focuses:[],resourceDots:{}}; }
   function getLp(id){ return DATA.lifepaths.find(x=>x.id===id) || null; }
+  function getClan(id){ return DATA.clans.find(x=>x.id===id) || null; }
   function totalSkill(state,id){
     return state.lifepaths.reduce((n,lp)=>n+(lp.skillDots[id]||0),0)+(state.freeSkills[id]||0);
   }
@@ -32,6 +33,25 @@
   function lpFocusBudget(state,index){ return DATA.rules.standard.lifepathFocuses; }
   function activeLpCount(state){ return state.identity.young ? 1 : DATA.rules.standard.lifepaths; }
   function log(state,msg){ state.changeLog.unshift({at:new Date().toISOString(),msg}); state.changeLog=state.changeLog.slice(0,12); }
+
+  function setClan(state,id){
+    if(!getClan(id)) return false;
+    if(state.identity.clan===id) return true;
+    const old=getClan(state.identity.clan);
+    const next=getClan(id);
+    const cleared=[];
+    // Future-facing reconciliation hooks. These fields may be introduced by later chargen steps.
+    if(state.disciplines && Object.keys(state.disciplines).length){ state.disciplines={}; cleared.push("Discipline selections"); }
+    if(state.clanSelections && Object.keys(state.clanSelections).length){ state.clanSelections={}; cleared.push("clan-specific selections"); }
+    if(state.merit){
+      const merit=DATA.merits.find(m=>m.id===state.merit);
+      if(merit?.clans && !merit.clans.includes(id)){ state.merit=""; cleared.push("starting Merit"); }
+    }
+    state.identity.clan=id;
+    log(state,`${old?old.name:"Clan"} changed to ${next.name}${cleared.length?`; cleared ${cleared.join(", ")}`:""}.`);
+    reconcile(state);
+    return true;
+  }
 
   function setYoung(state,young){
     if(state.identity.young===young) return;
@@ -153,6 +173,7 @@
 
   function validation(state){
     const issues=[]; const warnings=[];
+    if(!getClan(state.identity.clan)) issues.push("Choose and confirm a valid Clan.");
     const attrs=Object.values(state.attributes); const dist=DATA.rules.attributes.chargenDistribution;
     for(const [rating,count] of Object.entries(dist)) if(attrs.filter(v=>v===Number(rating)).length!==count) issues.push(`Attributes must contain exactly ${count} rating ${rating}.`);
     const n=activeLpCount(state);
@@ -182,8 +203,29 @@
     return rows;
   }
 
+  function migrateState(s){
+    s=s||{};
+    s.identity=s.identity||{};
+    if(s.identity.clan && !getClan(s.identity.clan)){
+      const byName=DATA.clans.find(c=>c.name.toLowerCase()===String(s.identity.clan).toLowerCase());
+      s.identity.clan=byName?byName.id:"";
+    }
+    if(!Array.isArray(s.lifepaths)) s.lifepaths=[];
+    while(s.lifepaths.length<2) s.lifepaths.push(makeLpSlot());
+    if(!s.freeSkills) s.freeSkills=blankDots();
+    for(const sid of skillIds()) if(typeof s.freeSkills[sid]!=="number") s.freeSkills[sid]=0;
+    if(!Array.isArray(s.freeFocuses)) s.freeFocuses=[];
+    if(!Array.isArray(s.freeResources)) s.freeResources=[];
+    if(!Array.isArray(s.flaws)) s.flaws=[];
+    if(!Array.isArray(s.changeLog)) s.changeLog=[];
+    if(typeof s.feedingPattern!=="string") s.feedingPattern="";
+    if(typeof s.notes!=="string") s.notes="";
+    if(typeof s.merit!=="string") s.merit="";
+    s.schemaVersion=2;
+    return s;
+  }
   function exportState(state){ return JSON.stringify(state,null,2); }
-  function importState(text){ const s=JSON.parse(text); reconcile(s); return s; }
+  function importState(text){ const s=migrateState(JSON.parse(text)); reconcile(s); return s; }
 
-  global.VTM_MODEL={newState,getLp,totalSkill,totalSkills,allFocuses,focusCountOnSkill,activeLpCount,setYoung,setLifepath,setLpSkillDot,setFreeSkillDot,addLpFocus,addFreeFocus,removeFocus,setLpResourceDot,addFreeResource,reconcile,validation,resourceSummary,exportState,importState,clone};
+  global.VTM_MODEL={newState,getLp,getClan,totalSkill,totalSkills,allFocuses,focusCountOnSkill,activeLpCount,setClan,setYoung,setLifepath,setLpSkillDot,setFreeSkillDot,addLpFocus,addFreeFocus,removeFocus,setLpResourceDot,addFreeResource,reconcile,validation,resourceSummary,exportState,importState,clone};
 })(window);

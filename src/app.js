@@ -1,11 +1,15 @@
 (function(){
 const D=window.VTM_DATA,M=window.VTM_MODEL;
-const steps=[['identity','Основа'],['lifepaths','Lifepaths'],['skills','Skills'],['focuses','Focuses'],['resources','Resources'],['traits','Merits / Flaws'],['review','Review']];
+const steps=[['clan','Clan'],['identity','Основа'],['lifepaths','Lifepaths'],['skills','Skills'],['focuses','Focuses'],['resources','Resources'],['traits','Merits / Flaws'],['review','Review']];
 let current=0;
 let state=loadLocal()||M.newState();
+let clanView='list';
+let previewClanId=state.identity.clan||'';
 let lastLogCount=state.changeLog.length;
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const skill=id=>D.skills.find(s=>s.id===id);
+const clan=id=>D.clans.find(c=>c.id===id);
+const clanByName=name=>D.clans.find(c=>c.name===name);
 const rtype=id=>D.resourceTypes.find(r=>r.id===id);
 const sum=o=>Object.values(o||{}).reduce((a,b)=>a+(Number(b)||0),0);
 
@@ -13,22 +17,44 @@ function loadLocal(){try{const x=localStorage.getItem('vtm_v5v6_chargen');return
 function saveLocal(){localStorage.setItem('vtm_v5v6_chargen',M.exportState(state));flash('Character state saved locally on this device.');}
 function flash(msg,kind='info'){const f=$('#flash');f.className=`notice ${kind} flash show`;f.textContent=msg;clearTimeout(f._t);f._t=setTimeout(()=>f.classList.remove('show'),5000)}
 function render(){
-  renderProgress(); renderIdentity(); renderLifepaths(); renderSkills(); renderFocuses(); renderResources(); renderTraits(); renderReview();
+  renderProgress(); renderClan(); renderIdentity(); renderLifepaths(); renderSkills(); renderFocuses(); renderResources(); renderTraits(); renderReview();
   document.querySelectorAll('.section').forEach((el,i)=>el.classList.toggle('active',i===current));
-  $('#backBtn').disabled=current===0; $('#nextBtn').textContent=current===steps.length-1?'Review':'Далі →';
+  $('#backBtn').disabled=current===0 && clanView!=='detail'; $('#nextBtn').textContent=current===steps.length-1?'Review':'Далі →';
   if(state.changeLog.length>lastLogCount){flash(state.changeLog[0].msg,'warn');lastLogCount=state.changeLog.length}
 }
 function renderProgress(){
   $('#progress').innerHTML=steps.map((s,i)=>`<button class="stepbtn ${i===current?'active':''}" data-goto="${i}">${i+1}. ${s[1]}</button>`).join('');
-  document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>{current=Number(b.dataset.goto);render()});
+  document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>{
+    const target=Number(b.dataset.goto);
+    if(target>0 && !state.identity.clan){flash('Choose and confirm a Clan before continuing.','danger');current=0;render();return;}
+    current=target;render();
+  });
+}
+function renderClan(){
+  const selected=clan(state.identity.clan);
+  const preview=clan(previewClanId)||selected;
+  if(clanView==='detail' && preview){
+    $('#clanUI').innerHTML=`<div class="card"><div class="clanhero"><div class="clansigil">${esc(preview.short)}</div><div><div class="small">${preview.category==='special'?'Special V5 option':'V5 Clan'}</div><h2>${esc(preview.name)}</h2><div class="clantag">${esc(preview.tagline)}</div><div class="disciplines">${preview.disciplines.map(d=>`<span class="discipline">${esc(d)}</span>`).join('')}</div></div></div><h3>Clan identity</h3><div class="clanbody">${esc(preview.description)}</div><div class="traitgrid" style="margin-top:12px"><div class="traitbox"><div class="traitlabel">Bane</div><div class="traitname">${esc(preview.bane.name)}</div><div class="small">${esc(preview.bane.summary)}</div></div><div class="traitbox"><div class="traitlabel">Compulsion</div><div class="traitname">${esc(preview.compulsion.name)}</div><div class="small">${esc(preview.compulsion.summary)}</div></div></div><div class="notice info" style="margin-top:12px">Clan is an upstream choice. Future clan-dependent Disciplines, Merits, and other selections will be validated against this choice and reconciled if the Clan changes.</div><div class="clanactions"><button class="btn" id="allClansBtn">← All Clans</button><button class="btn primary" id="chooseClanBtn">${selected?.id===preview.id?'Clan selected':'Choose '+esc(preview.name)}</button></div></div>`;
+    $('#allClansBtn').onclick=()=>{clanView='list';renderClan()};
+    $('#chooseClanBtn').onclick=()=>{
+      const previous=state.identity.clan;
+      M.setClan(state,preview.id);
+      previewClanId=preview.id;
+      if(previous!==preview.id) flash(`${preview.name} selected.${previous?' Clan-dependent choices were reconciled.':''}`,'good');
+      render();
+    };
+    return;
+  }
+  $('#clanUI').innerHTML=`<div class="card clanintro"><h2>Choose Your Clan</h2><div class="clanbody">Clan is the first major decision in character creation. It defines the character's vampiric lineage, clan Disciplines, Bane, and Compulsion, and will constrain later clan-dependent choices.</div>${selected?`<div class="notice good">Current Clan: <strong>${esc(selected.name)}</strong>. You can review or change it below.</div>`:'<div class="notice warn">No Clan selected. Choose a Clan to continue.</div>'}</div><div class="clangrid">${D.clans.map(c=>`<button class="clancard ${selected?.id===c.id?'selected':''}" data-clan-card="${c.id}"><div class="clansigil">${esc(c.short)}</div><div><div class="clanname">${esc(c.name)}</div><div class="clantag">${esc(c.tagline)}</div><div class="clandisc">${c.disciplines.map(esc).join(' · ')}</div></div></button>`).join('')}</div><div class="notice info" style="margin-top:12px">Thin-blood is intentionally not shown as a Clan. It requires a different chargen path and will be handled separately if added.</div>`;
+  document.querySelectorAll('[data-clan-card]').forEach(b=>b.onclick=()=>{previewClanId=b.dataset.clanCard;clanView='detail';renderClan()});
 }
 function renderIdentity(){
   const a=state.attributes;
   const attrGroups=[['Physical',[['strength','Strength'],['dexterity','Dexterity'],['stamina','Stamina']]],['Social',[['charisma','Charisma'],['manipulation','Manipulation'],['composure','Composure']]],['Mental',[['intelligence','Intelligence'],['wits','Wits'],['resolve','Resolve']]]];
   $('#identityUI').innerHTML=`
-  <div class="card"><h2>Character</h2><div class="grid2"><div class="field"><label>Name</label><input id="charName" value="${esc(state.identity.name)}"></div><div class="field"><label>Clan</label><input id="charClan" value="${esc(state.identity.clan)}"></div></div><div class="grid2"><div class="field"><label>Concept</label><input id="charConcept" value="${esc(state.identity.concept)}"></div><div class="field"><label>Generation</label><input id="charGen" type="number" min="4" max="16" value="${state.identity.generation}"></div></div><div class="switchrow"><input id="youngToggle" type="checkbox" ${state.identity.young?'checked':''}><div><strong>Young / inexperienced character</strong><div class="small">Uses one Lifepath and starts weaker. Catch-up XP is ×2 of the actual rate chosen by the ST.</div></div></div></div>
+  <div class="card"><h2>Character</h2><div class="notice info"><strong>${esc(clan(state.identity.clan)?.name||'No Clan selected')}</strong> is set on the Clan step. Clan is not editable here.</div><div class="grid2"><div class="field"><label>Name</label><input id="charName" value="${esc(state.identity.name)}"></div><div class="field"><label>Concept</label><input id="charConcept" value="${esc(state.identity.concept)}"></div></div><div class="grid2"><div class="field"><label>Generation</label><input id="charGen" type="number" min="4" max="16" value="${state.identity.generation}"></div><div></div></div><div class="switchrow"><input id="youngToggle" type="checkbox" ${state.identity.young?'checked':''}><div><strong>Young / inexperienced character</strong><div class="small">Uses one Lifepath and starts weaker. Catch-up XP is ×2 of the actual rate chosen by the ST.</div></div></div></div>
   <div class="card"><h2>V5 Attributes</h2><div class="notice info">Current generator validates the standard V5 distribution: one 4, three 3s, four 2s, one 1.</div>${attrGroups.map(g=>`<h3>${g[0]}</h3><div class="grid3">${g[1].map(([id,n])=>`<div class="attr"><label>${n}</label><select data-attr="${id}">${[1,2,3,4].map(v=>`<option ${a[id]===v?'selected':''}>${v}</option>`).join('')}</select></div>`).join('')}</div>`).join('')}</div>`;
-  $('#charName').oninput=e=>state.identity.name=e.target.value; $('#charClan').oninput=e=>state.identity.clan=e.target.value; $('#charConcept').oninput=e=>state.identity.concept=e.target.value; $('#charGen').oninput=e=>state.identity.generation=Number(e.target.value)||13;
+  $('#charName').oninput=e=>state.identity.name=e.target.value; $('#charConcept').oninput=e=>state.identity.concept=e.target.value; $('#charGen').oninput=e=>state.identity.generation=Number(e.target.value)||13;
   $('#youngToggle').onchange=e=>{M.setYoung(state,e.target.checked);render()}; document.querySelectorAll('[data-attr]').forEach(x=>x.onchange=e=>{state.attributes[e.target.dataset.attr]=Number(e.target.value);renderReview()});
 }
 function lpOptions(selected){return `<option value="">— choose —</option>${D.lifepaths.map(lp=>`<option value="${lp.id}" ${lp.id===selected?'selected':''}>${lp.type==='vampire'?'[Vampire] ':'[Mortal] '}${lp.name}</option>`).join('')}`}
@@ -80,15 +106,15 @@ function renderTraits(){
 function renderReview(){
  const v=M.validation(state),tot=M.totalSkills(state),focuses=M.allFocuses(state),res=M.resourceSummary(state),n=M.activeLpCount(state);
  $('#reviewUI').innerHTML=`<div class="card"><h2>Validation</h2>${v.ok?'<div class="notice good">All hard chargen constraints currently pass.</div>':'<div class="notice danger">Character is not rules-valid yet.</div>'}${v.issues.map(x=>`<div class="issue" style="color:var(--danger)">• ${esc(x)}</div>`).join('')}${v.warnings.map(x=>`<div class="issue" style="color:var(--warn)">• ${esc(x)}</div>`).join('')}</div>
- <div class="reviewgrid"><div class="card"><h2>Identity</h2><div class="kv"><strong>${esc(state.identity.name||'Unnamed')}</strong></div><div class="kv">${esc(state.identity.clan)} · Gen ${state.identity.generation}</div><div class="kv">${esc(state.identity.concept||'No concept')}</div><div class="kv">${state.identity.young?'Young character · 1 Lifepath · ×2 catch-up XP':'Standard neonate · 2 Lifepaths'}</div></div><div class="card"><h2>Lifepaths</h2>${state.lifepaths.slice(0,n).map((x,i)=>`<div class="kv">${i+1}. ${esc(M.getLp(x.id)?.name||'—')}</div>`).join('')}</div></div>
+ <div class="reviewgrid"><div class="card"><h2>Identity</h2><div class="kv"><strong>${esc(state.identity.name||'Unnamed')}</strong></div><div class="kv">${esc(clan(state.identity.clan)?.name||'No Clan')} · Gen ${state.identity.generation}</div><div class="kv">${esc(state.identity.concept||'No concept')}</div><div class="kv">${state.identity.young?'Young character · 1 Lifepath · ×2 catch-up XP':'Standard neonate · 2 Lifepaths'}</div></div><div class="card"><h2>Lifepaths</h2>${state.lifepaths.slice(0,n).map((x,i)=>`<div class="kv">${i+1}. ${esc(M.getLp(x.id)?.name||'—')}</div>`).join('')}</div></div>
  <div class="card"><h2>Skills</h2>${D.skills.filter(s=>tot[s.id]>0).map(s=>`<div class="kv"><strong>${s.name} ${tot[s.id]}</strong>${focuses.filter(f=>f.skill===s.id).length?` <span class="small">(${focuses.filter(f=>f.skill===s.id).map(f=>esc(f.name)+' +2').join(', ')})</span>`:''}</div>`).join('')||'<div class="small">No Skills yet.</div>'}</div>
  <div class="reviewgrid"><div class="card"><h2>Resources</h2>${res.map(r=>`<div class="kv"><strong>${esc(rtype(r.type)?.name||r.type)}${r.label?`: ${esc(r.label)}`:''} ${r.dots}</strong><div class="small">${esc(r.source)}</div></div>`).join('')||'<div class="small">No Resources yet.</div>'}</div><div class="card"><h2>Traits</h2><div class="kv">Merit: ${esc(D.merits.find(m=>m.id===state.merit)?.name||'—')}</div><div class="kv">Flaws: ${state.flaws.length?state.flaws.map(f=>esc(f.name)).join(', '):'—'}</div><div class="kv"><span class="small">Feeding:</span><br>${esc(state.feedingPattern||'—')}</div></div></div>
  <div class="card"><h2>Data</h2><div class="grid2"><button class="btn" id="exportBtn">Export JSON</button><button class="btn" id="importBtn">Import JSON</button></div><h3>Recent dependency changes</h3>${state.changeLog.length?state.changeLog.slice(0,6).map(x=>`<div class="issue">${esc(x.msg)}</div>`).join(''):'<div class="small">No reconciliations yet.</div>'}</div>`;
  const ex=$('#exportBtn');if(ex)ex.onclick=downloadJSON;const im=$('#importBtn');if(im)im.onclick=()=>$('#importFile').click();
 }
 function downloadJSON(){const blob=new Blob([M.exportState(state)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(state.identity.name.trim().replace(/[^a-z0-9_-]+/gi,'_')||'vtm_character')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-$('#importFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{state=M.importState(rd.result);flash('Character imported and reconciled against current data.','good');render()}catch(err){flash('Invalid character JSON.','danger')}};rd.readAsText(f);e.target.value=''};
-$('#backBtn').onclick=()=>{if(current>0){current--;render()}};$('#nextBtn').onclick=()=>{if(current<steps.length-1){current++;render()}else renderReview()};$('#saveBtn').onclick=saveLocal;
+$('#importFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{state=M.importState(rd.result);previewClanId=state.identity.clan||'';clanView='list';flash('Character imported and reconciled against current data.','good');render()}catch(err){flash('Invalid character JSON.','danger')}};rd.readAsText(f);e.target.value=''};
+$('#backBtn').onclick=()=>{if(current===0 && clanView==='detail'){clanView='list';render();return;}if(current>0){current--;render()}};$('#nextBtn').onclick=()=>{if(current===0 && !state.identity.clan){flash('Choose and confirm a Clan before continuing.','danger');return;}if(current<steps.length-1){current++;render()}else renderReview()};$('#saveBtn').onclick=saveLocal;
 window.addEventListener('beforeunload',()=>{try{localStorage.setItem('vtm_v5v6_chargen',M.exportState(state))}catch(e){}});
 render();
 })();
