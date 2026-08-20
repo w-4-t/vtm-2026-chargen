@@ -1,58 +1,59 @@
-# VTM V5 + V6 Lifepath Chargen — v0.1.1
+# VTM V5 / V6 Lifepath Chargen — v0.2.0
 
-Static, client-side character-generation test harness intended for GitHub Pages.
+Static GitHub Pages-ready character generator prototype.
 
-## Scope implemented
+## Current design baseline
 
-- V5 base identity/Attributes shell.
-- V6 13-Skill model.
+- V5 is the base game.
+- Clan is the first substantive chargen step and an upstream rules choice.
+- V6-style 13 Skills and Lifepaths.
 - Standard neonate: 2 Lifepaths.
-- Each Lifepath: 5 Skill dots, 2 Focuses, 3 Resource dots.
-- Free: 8 Skill dots, 2 Focuses, 3 Resource dots.
-- Skill chargen cap: 3.
-- Focus: +2 dice; max 2 Focuses per Skill at chargen.
-- Young character: 1 Lifepath; no compensating chargen dots; ×2 catch-up XP concept is displayed.
-- V6 Resources used for chargen allocation only. Runtime resource mechanics are intentionally deferred.
-- Provisional non-conflicting Merit list only.
-- Flaws are optional ST hooks with no point compensation.
-- Predator Type is not required; feeding pattern is free text.
-- Local save + JSON import/export.
+- 5 Skill dots per Lifepath + 8 free = 18 total allocation dots.
+- Skill cap at chargen: 3.
+- Focuses are detached from Skill rating thresholds.
+- 2 Focuses per Lifepath + 2 free = 6 Focuses.
+- Focus bonus: +2 dice.
+- Maximum 2 Focuses on one Skill at chargen.
+- V6 Resources: 3 dots per Lifepath + 3 free = 9 Resource dots.
+- Runtime Resource mechanics are intentionally deferred.
+- Starting Merit list is provisional and contains only currently non-conflicting candidates.
+- Flaws have no point compensation and act as ST-facing hooks.
+- Predator Type is not required; feeding practice is descriptive unless player and ST agree on specific mechanics.
+- Young / inexperienced character: 1 Lifepath, no compensating starting dots, ×2 catch-up XP rate.
 
-## Reactive dependency handling
+## Clan screen
 
-The app does not trust later-step state when an earlier choice changes.
+`data/clans.js` is the data source for the Clan step. Each entry currently contains:
 
-Examples:
-- Changing a Lifepath clears that Lifepath's Skill allocation, Focuses, and Resource allocation.
-- Enabling Young Character clears Lifepath 2 and its dependent data.
-- Lowering a Skill to 0 removes Focuses that depend on it.
-- Global Skill cap and Focus-per-Skill cap are enforced at edit time.
-- A visible change log explains automatic reconciliation.
+- name and short identifier;
+- short identity description;
+- V5 clan Disciplines;
+- compact Bane summary;
+- compact Compulsion summary.
 
-This is deliberate: an upstream change must immediately change or invalidate downstream state instead of leaving a rules-illegal character that still looks valid.
+The text is intentionally compact for chargen navigation. Clan-specific mechanics can be expanded later without changing the UI.
 
-## Editing the database
+Clan is stored as a stable data ID, not free text. Changing Clan runs reconciliation hooks for later clan-dependent choices. Existing v0.1 character JSON/localStorage values using a Clan name such as `Brujah` are migrated to the matching ID on load.
 
-No backend is required. Edit these files directly:
+Thin-blood is not presented as a Clan because it needs a separate chargen path. Caitiff is included as a special clanless option.
 
-- `data/lifepaths.js`
+## Reactive dependency behavior
+
+The generator does not trust stale downstream state.
+
+- Changing a Lifepath clears that Lifepath's Skill dots, Focuses, and Resources.
+- Enabling Young Character clears Lifepath 2 and its dependent choices.
+- Reducing a Skill to 0 removes Focuses that depend on it.
+- Imported state is reconciled against current data.
+- Clan is an upstream dependency. Current v0.2 has future-facing reconciliation hooks for clan-dependent Disciplines, clan-specific selections, and restricted Merits.
+
+## Data files
+
+- `data/clans.js`
 - `data/skills.js`
+- `data/lifepaths.js`
 - `data/resources.js`
 - `data/merits.js`
 - `data/rules.js`
 
-They are plain JavaScript data files rather than fetched JSON so the package also works when `index.html` is opened directly from disk.
-
-## GitHub Pages
-
-Upload the whole folder to repository root, enable Pages from `main / root`, then open the published URL.
-
-## Deliberately deferred
-
-- Full V5 clan/Discipline/Power chargen.
-- Discipline maturing.
-- V6 Resource runtime mechanics (tests, spending, depletion, recovery).
-- Final Merit catalogue and adapted V5 Merits.
-- Final Focus catalogue review.
-- Skill gaps such as Drive/Etiquette/Leadership.
-- Advancement UI/tracker (cost rules are data-only for now).
+These can be edited directly for GitHub Pages deployment without a backend.

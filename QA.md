@@ -1,26 +1,37 @@
-# QA checklist — v0.1.0
+# QA — v0.2.0
 
-## Dependency regression tests
+## Clan-first flow
 
-1. Select `Military` as Lifepath 1.
-2. Spend 5 Lifepath Skill dots, add 2 Focuses, spend 3 Resource dots.
-3. Change Lifepath 1 to `Artist`.
-   - Expected: all Military-specific allocations for Lifepath 1 are cleared.
-   - Expected: visible reconciliation message/change-log entry.
-4. Create Lifepath 2 allocations, then enable `Young / inexperienced character`.
-   - Expected: Lifepath 2 disappears and all its dependent data is cleared.
-5. Put a free Focus on a Skill whose rating comes only from free Skill dots.
-6. Lower that Skill to 0.
-   - Expected: dependent Focus is removed and logged.
-7. Try to raise any final Skill above 3.
-   - Expected: edit rejected with a visible error.
-8. Try to add a third Focus to one Skill.
-   - Expected: edit rejected.
-9. Export JSON, change upstream state, then import the old JSON.
-   - Expected: imported state is reconciled against current rules/data.
+1. Clear localStorage or open the generator for the first time.
+2. Confirm that Step 1 is `Clan` and no free-text Clan field exists on `Основа`.
+3. Try `Далі` without selecting a Clan.
+   - Expected: navigation is blocked and an explicit message asks for a confirmed Clan.
+4. Tap a Clan card.
+   - Expected: dedicated detail view with description, Disciplines, Bane, Compulsion.
+5. Use `All Clans`.
+   - Expected: returns to the Clan list without changing the confirmed Clan.
+6. Open Brujah and press `Choose Brujah`.
+   - Expected: Brujah becomes the confirmed Clan and downstream steps unlock.
+7. Return to Clan, select Ventrue, confirm it.
+   - Expected: selected Clan changes immediately and the change is written to the dependency log.
 
-## Budget validation
+## Migration
 
-- Each standard Lifepath: exactly 5 Skill dots / 2 Focuses / 3 Resource dots.
-- Free pool: exactly 8 Skill dots / 2 Focuses / 3 Resource dots.
-- V5 Attributes: 4×1, 3×3, 2×4, 1×1 distribution.
+Import or load a v0.1 character where `identity.clan` is `"Brujah"`.
+
+Expected:
+- it migrates to the stable `brujah` clan ID;
+- Review displays `Brujah`, not `brujah`;
+- no free-text Clan field reappears.
+
+## Existing dependency regression
+
+1. Choose two Lifepaths and spend dependent dots.
+2. Change Lifepath 1.
+   - Expected: only Lifepath 1 dependent Skill dots / Focuses / Resources are cleared.
+3. Enable Young Character.
+   - Expected: Lifepath 2 and all of its dependent choices disappear.
+4. Add a Focus and then reduce its Skill to 0.
+   - Expected: the Focus is automatically removed and the change is logged.
+5. Export JSON, edit it to contain a stale Focus on a zero Skill, import it.
+   - Expected: import reconciliation removes the stale Focus.
