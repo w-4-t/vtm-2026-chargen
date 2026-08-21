@@ -1,6 +1,6 @@
 window.VTM_DATA = window.VTM_DATA || {};
 window.VTM_DATA.rules = {
-  version: "0.2.0",
+  version: "0.3.0",
   tier: "neonate",
   standard: {
     lifepaths: 2,
@@ -13,7 +13,11 @@ window.VTM_DATA.rules = {
     maxFocusesPerSkill: 2,
     lifepathResourceDots: 3,
     freeResourceDots: 3,
-    startingMerits: 1
+    startingMerits: 1,
+    disciplineDots: [2,1],
+    startingHumanity: 7,
+    minConvictions: 1,
+    maxConvictions: 3
   },
   young: {
     lifepaths: 1,
@@ -27,5 +31,8 @@ window.VTM_DATA.rules = {
   },
   attributes: {
     chargenDistribution: {"4":1,"3":3,"2":4,"1":1}
+  },
+  generationBloodPotency: {
+    "10":2,"11":2,"12":1,"13":1
   }
 };
